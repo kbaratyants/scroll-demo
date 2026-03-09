@@ -5,21 +5,22 @@
 	import DateHeader from "$lib/components/DateHeader.svelte";
 	import type { Message } from "$lib/data/messages";
 
-	let { items }: { items: Message[] } = $props();
+	let {
+		items,
+		expandedMessageIds = new Set<number>(),
+		onToggleMessageExpand
+	}: {
+		items: Message[];
+		expandedMessageIds?: ReadonlySet<number>;
+		onToggleMessageExpand?: (id: number) => void;
+	} = $props();
 	let listRef: VListHandle | undefined = $state();
-	let rootRef: HTMLDivElement | undefined = $state();
 
 	interface MessageGroup {
 		date: string;
 		messages: Message[];
 		startIndex: number;
 		endIndex: number;
-	}
-
-	export interface ScrollAnchor {
-		id: number;
-		top: number;
-		scrollTop: number;
 	}
 
 	function getDateLabel(messageId: number): string {
@@ -61,70 +62,6 @@
 		return groups.length - 1;
 	}
 
-	function getScrollContainer(): HTMLElement | null {
-		const viewport = rootRef?.firstElementChild;
-		if (!(viewport instanceof HTMLElement)) {
-			return null;
-		}
-		return viewport;
-	}
-
-	export function captureAnchor(): ScrollAnchor | null {
-		const container = getScrollContainer();
-		if (!container) {
-			return null;
-		}
-
-		const containerRect = container.getBoundingClientRect();
-		const nodes = container.querySelectorAll<HTMLElement>("[data-id]");
-
-		for (const node of nodes) {
-			const nodeRect = node.getBoundingClientRect();
-			const intersectsViewport =
-				nodeRect.bottom > containerRect.top && nodeRect.top < containerRect.bottom;
-			if (!intersectsViewport || nodeRect.top < containerRect.top) {
-				continue;
-			}
-
-			const id = Number(node.dataset.id);
-			if (Number.isNaN(id)) {
-				continue;
-			}
-
-			return {
-				id,
-				top: nodeRect.top - containerRect.top,
-				scrollTop: container.scrollTop
-			};
-		}
-
-		return null;
-	}
-
-	export function restoreAnchor(anchor: ScrollAnchor | null): void {
-		if (!anchor) {
-			return;
-		}
-
-		const container = getScrollContainer();
-		if (!container) {
-			return;
-		}
-
-		const anchoredNode = container.querySelector<HTMLElement>(`[data-id="${anchor.id}"]`);
-		if (!anchoredNode) {
-			return;
-		}
-
-		const containerRect = container.getBoundingClientRect();
-		const newTop = anchoredNode.getBoundingClientRect().top - containerRect.top;
-		const delta = newTop - anchor.top;
-
-		if (delta !== 0) {
-			container.scrollTop += delta;
-		}
-	}
-
 	export function scrollToIndex(index: number): void {
 		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
 		listRef?.scrollToIndex(findGroupIndexByMessageIndex(boundedIndex));
@@ -135,13 +72,23 @@
 	}
 </script>
 
-<div bind:this={rootRef}>
-	<VList bind:this={listRef} data={groups} style="height: 600px;" getKey={(group) => group.startIndex}>
+<div>
+	<VList
+		bind:this={listRef}
+		data={groups}
+		style="height: 600px;"
+		shift={true}
+		getKey={(group) => group.startIndex}
+	>
 		{#snippet children(group)}
 			<section>
 				<DateHeader date={group.date} />
 				{#each group.messages as message (message.id)}
-					<MessageItem {message} />
+					<MessageItem
+						{message}
+						expanded={expandedMessageIds.has(message.id)}
+						onToggleExpand={() => onToggleMessageExpand?.(message.id)}
+					/>
 				{/each}
 			</section>
 		{/snippet}

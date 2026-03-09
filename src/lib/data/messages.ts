@@ -1,7 +1,6 @@
 export interface Message {
 	id: number;
 	text: string;
-	height: number;
 }
 
 const WORDS = [
@@ -72,8 +71,7 @@ export function generateMessages(count: number, seed?: number): Message[] {
 	for (let i = 0; i < count; i += 1) {
 		messages.push({
 			id: i + 1,
-			text: randomText(rng),
-			height: randomInt(40, 200, rng)
+			text: randomText(rng)
 		});
 	}
 

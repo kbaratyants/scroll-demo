@@ -1,27 +1,23 @@
 <script lang="ts">
-	import { tick } from "svelte";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
-	import type { ScrollAnchor } from "$lib/components/VirtuaList.svelte";
 
 	let items = $state(generateMessages(5000, 42));
 	let olderMessageId = $state(0);
 	let isLoadingOlder = $state(false);
+	let expandedMessageIds = $state<Set<number>>(new Set());
 
 	function buildOlderMessages(count: number): Message[] {
 		const batch = generateMessages(count, Date.now());
 		return batch.map((message) => ({
 			id: olderMessageId--,
-			text: `Older: ${message.text}`,
-			height: message.height
+			text: `Older: ${message.text}`
 		}));
 	}
 
 	type VirtuaListApi = {
 		scrollToIndex(index: number, smooth: boolean): void;
 		scrollToOffset(offset: number): void;
-		captureAnchor(): ScrollAnchor | null;
-		restoreAnchor(anchor: ScrollAnchor | null): void;
 	};
 	let listRef: VirtuaListApi | undefined = $state();
 
@@ -42,18 +38,25 @@
 		listRef?.scrollToIndex(randomIndex, true);
 	}
 
-	async function loadOlder() {
+	function toggleMessageExpanded(messageId: number) {
+		const next = new Set(expandedMessageIds);
+		if (next.has(messageId)) {
+			next.delete(messageId);
+		} else {
+			next.add(messageId);
+		}
+		expandedMessageIds = next;
+	}
+
+	function loadOlder() {
 		if (isLoadingOlder) {
 			return;
 		}
 
 		isLoadingOlder = true;
-		const anchor = listRef?.captureAnchor() ?? null;
 		const olderMessages = buildOlderMessages(100);
 
 		items = [...olderMessages, ...items];
-		await tick();
-		listRef?.restoreAnchor(anchor);
 		isLoadingOlder = false;
 	}
 </script>
@@ -71,7 +74,12 @@
 		<button type="button" onclick={randomScroll}>Random scroll</button>
 	</div>
 
-	<VirtuaList bind:this={listRef} {items} />
+	<VirtuaList
+		bind:this={listRef}
+		{items}
+		{expandedMessageIds}
+		onToggleMessageExpand={toggleMessageExpanded}
+	/>
 </main>
 
 <style>
