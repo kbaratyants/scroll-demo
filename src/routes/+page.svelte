@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import type { ScrollToIndexOpts } from "virtua";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
 	import { createFpsMonitor } from "$lib/metrics/fps";
@@ -28,26 +29,39 @@
 	}
 
 	type VirtuaListApi = {
-		scrollToIndex(index: number, smooth: boolean): void;
+		scrollToIndex(index: number, opts?: ScrollToIndexOpts): void;
 		scrollToOffset(offset: number): void;
 	};
 	let listRef: VirtuaListApi | undefined = $state();
+	let smoothScroll = $state(false);
+	let goToIndexInput = $state("");
+
+	function getScrollOpts(): ScrollToIndexOpts | undefined {
+		return smoothScroll ? { smooth: true } : undefined;
+	}
 
 	function scrollTop() {
-		listRef?.scrollToOffset(0);
+		listRef?.scrollToIndex(0, getScrollOpts());
 	}
 
 	function scrollMiddle() {
-		listRef?.scrollToIndex(Math.floor(items.length / 2), true);
+		listRef?.scrollToIndex(Math.floor(items.length / 2), getScrollOpts());
 	}
 
 	function scrollBottom() {
-		listRef?.scrollToIndex(items.length - 1, true);
+		listRef?.scrollToIndex(items.length - 1, getScrollOpts());
 	}
 
 	function randomScroll() {
 		const randomIndex = Math.floor(Math.random() * items.length);
-		listRef?.scrollToIndex(randomIndex, true);
+		listRef?.scrollToIndex(randomIndex, getScrollOpts());
+	}
+
+	function scrollToSpecificIndex() {
+		const parsed = parseInt(goToIndexInput, 10);
+		if (Number.isNaN(parsed)) return;
+		const clamped = Math.max(0, Math.min(parsed, items.length - 1));
+		listRef?.scrollToIndex(clamped, getScrollOpts());
 	}
 
 	function formatMetric(value: number): string {
@@ -135,10 +149,26 @@
 		<button type="button" onclick={loadOlder} disabled={isLoadingOlder}>
 			{isLoadingOlder ? "Loading..." : "Load older (prepend 100)"}
 		</button>
-		<button type="button" onclick={scrollTop}>Scroll top</button>
-		<button type="button" onclick={scrollMiddle}>Scroll middle</button>
-		<button type="button" onclick={scrollBottom}>Scroll bottom</button>
-		<button type="button" onclick={randomScroll}>Random scroll</button>
+		<button type="button" onclick={scrollTop}>Top</button>
+		<button type="button" onclick={scrollMiddle}>Middle</button>
+		<button type="button" onclick={scrollBottom}>Bottom</button>
+		<button type="button" onclick={randomScroll}>Random</button>
+		<label class="smooth-toggle">
+			<input type="checkbox" bind:checked={smoothScroll} />
+			Smooth
+		</label>
+		<span class="goto-group">
+			<input
+				type="number"
+				class="goto-input"
+				bind:value={goToIndexInput}
+				placeholder="index"
+				min="0"
+				max={items.length - 1}
+				onkeydown={(e) => e.key === "Enter" && scrollToSpecificIndex()}
+			/>
+			<button type="button" onclick={scrollToSpecificIndex}>Go to</button>
+		</span>
 	</div>
 
 	<section class="metrics">
@@ -201,6 +231,41 @@
 		background: #111827;
 		color: #fff;
 		border-color: #111827;
+	}
+
+	.smooth-toggle {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0 8px;
+		font-size: 0.85rem;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.goto-group {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.goto-input {
+		width: 80px;
+		padding: 7px 8px;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		font-size: 0.85rem;
+	}
+
+	.goto-input::-webkit-inner-spin-button,
+	.goto-input::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+
+	.goto-input {
+		-moz-appearance: textfield;
+		appearance: textfield;
 	}
 
 	.metrics {

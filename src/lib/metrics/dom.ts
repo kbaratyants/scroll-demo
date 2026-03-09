@@ -4,5 +4,5 @@ export function countNodesInScrollContainer(container: HTMLElement | null): numb
 	}
 
 	// Count all descendant element nodes inside the scroll container.
-	return container.querySelectorAll("*").length;
+	return container.querySelectorAll(".message-item").length;
 }

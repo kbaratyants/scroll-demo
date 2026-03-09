@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { VList } from "virtua/svelte";
 	import type { VListHandle } from "virtua/svelte";
+	import type { ScrollToIndexOpts } from "virtua";
 	import MessageItem from "$lib/components/MessageItem.svelte";
 	import DateHeader from "$lib/components/DateHeader.svelte";
 	import type { Message } from "$lib/data/messages";
@@ -62,9 +63,9 @@
 		return groups.length - 1;
 	}
 
-	export function scrollToIndex(index: number): void {
+	export function scrollToIndex(index: number, opts?: ScrollToIndexOpts): void {
 		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
-		listRef?.scrollToIndex(findGroupIndexByMessageIndex(boundedIndex));
+		listRef?.scrollToIndex(findGroupIndexByMessageIndex(boundedIndex), opts);
 	}
 
 	export function scrollToOffset(offset: number): void {
