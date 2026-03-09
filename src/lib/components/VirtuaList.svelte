@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import { VList } from "virtua/svelte";
 	import type { VListHandle } from "virtua/svelte";
 	import type { ScrollToIndexOpts } from "virtua";
 	import MessageItem from "$lib/components/MessageItem.svelte";
 	import DateHeader from "$lib/components/DateHeader.svelte";
 	import type { Message } from "$lib/data/messages";
+
+	const MAX_ANIMATED_SCROLL_PX = 3000;
 
 	let {
 		items,
@@ -66,6 +69,30 @@
 	export function scrollToIndex(index: number, opts?: ScrollToIndexOpts): void {
 		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
 		listRef?.scrollToIndex(findGroupIndexByMessageIndex(boundedIndex), opts);
+	}
+
+	export async function scrollToIndexOptimized(index: number): Promise<void> {
+		if (!listRef) return;
+
+		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
+		const groupIndex = findGroupIndexByMessageIndex(boundedIndex);
+
+		const currentOffset = listRef.getScrollOffset();
+		const targetOffset = listRef.getItemOffset(groupIndex);
+		const distance = Math.abs(targetOffset - currentOffset);
+
+		if (distance <= MAX_ANIMATED_SCROLL_PX) {
+			listRef.scrollToIndex(groupIndex, { smooth: true });
+			return;
+		}
+
+		const direction = Math.sign(targetOffset - currentOffset);
+		const jumpOffset = targetOffset - direction * MAX_ANIMATED_SCROLL_PX;
+		listRef.scrollTo(jumpOffset);
+
+		await tick();
+
+		listRef.scrollToIndex(groupIndex, { smooth: true });
 	}
 
 	export function scrollToOffset(offset: number): void {

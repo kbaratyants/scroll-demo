@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import type { ScrollToIndexOpts } from "virtua";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
 	import { createFpsMonitor } from "$lib/metrics/fps";
@@ -28,40 +27,53 @@
 		}));
 	}
 
+	type ScrollMode = "instant" | "smooth" | "optimized";
+	const SCROLL_MODES: ScrollMode[] = ["instant", "smooth", "optimized"];
+
 	type VirtuaListApi = {
-		scrollToIndex(index: number, opts?: ScrollToIndexOpts): void;
+		scrollToIndex(index: number, opts?: { smooth?: boolean }): void;
+		scrollToIndexOptimized(index: number): Promise<void>;
 		scrollToOffset(offset: number): void;
 	};
 	let listRef: VirtuaListApi | undefined = $state();
-	let smoothScroll = $state(false);
+	let scrollMode = $state<ScrollMode>("instant");
 	let goToIndexInput = $state("");
 
-	function getScrollOpts(): ScrollToIndexOpts | undefined {
-		return smoothScroll ? { smooth: true } : undefined;
+	function scrollByMode(index: number) {
+		if (!listRef) return;
+		switch (scrollMode) {
+			case "smooth":
+				listRef.scrollToIndex(index, { smooth: true });
+				break;
+			case "optimized":
+				listRef.scrollToIndexOptimized(index);
+				break;
+			default:
+				listRef.scrollToIndex(index);
+		}
 	}
 
 	function scrollTop() {
-		listRef?.scrollToIndex(0, getScrollOpts());
+		scrollByMode(0);
 	}
 
 	function scrollMiddle() {
-		listRef?.scrollToIndex(Math.floor(items.length / 2), getScrollOpts());
+		scrollByMode(Math.floor(items.length / 2));
 	}
 
 	function scrollBottom() {
-		listRef?.scrollToIndex(items.length - 1, getScrollOpts());
+		scrollByMode(items.length - 1);
 	}
 
 	function randomScroll() {
-		const randomIndex = Math.floor(Math.random() * items.length);
-		listRef?.scrollToIndex(randomIndex, getScrollOpts());
+		scrollByMode(Math.floor(Math.random() * items.length));
 	}
 
 	function scrollToSpecificIndex() {
 		const parsed = parseInt(goToIndexInput, 10);
 		if (Number.isNaN(parsed)) return;
 		const clamped = Math.max(0, Math.min(parsed, items.length - 1));
-		listRef?.scrollToIndex(clamped, getScrollOpts());
+		scrollByMode(clamped);
 	}
 
 	function formatMetric(value: number): string {
@@ -153,10 +165,18 @@
 		<button type="button" onclick={scrollMiddle}>Middle</button>
 		<button type="button" onclick={scrollBottom}>Bottom</button>
 		<button type="button" onclick={randomScroll}>Random</button>
-		<label class="smooth-toggle">
-			<input type="checkbox" bind:checked={smoothScroll} />
-			Smooth
-		</label>
+		<span class="mode-group">
+			{#each SCROLL_MODES as mode}
+				<button
+					type="button"
+					class="mode-btn"
+					class:active={scrollMode === mode}
+					onclick={() => (scrollMode = mode)}
+				>
+					{mode}
+				</button>
+			{/each}
+		</span>
 		<span class="goto-group">
 			<input
 				type="number"
@@ -233,14 +253,24 @@
 		border-color: #111827;
 	}
 
-	.smooth-toggle {
+	.mode-group {
 		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 0 8px;
-		font-size: 0.85rem;
-		cursor: pointer;
-		user-select: none;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.mode-btn {
+		border: none;
+		border-radius: 0;
+		border-right: 1px solid #d1d5db;
+		padding: 8px 10px;
+		font-size: 0.8rem;
+		text-transform: capitalize;
+	}
+
+	.mode-btn:last-child {
+		border-right: none;
 	}
 
 	.goto-group {
