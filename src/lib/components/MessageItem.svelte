@@ -4,7 +4,7 @@
 	let { message }: { message: Message } = $props();
 </script>
 
-<article class="message-item" style={`height: ${message.height}px;`}>
+<article class="message-item" data-id={message.id} style={`height: ${message.height}px;`}>
 	<div class="id">#{message.id}</div>
 	<p class="text">{message.text}</p>
 </article>

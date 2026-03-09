@@ -1,11 +1,27 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
-	import { generateMessages } from "$lib/data/messages";
+	import { generateMessages, type Message } from "$lib/data/messages";
+	import type { ScrollAnchor } from "$lib/components/VirtuaList.svelte";
 
-	const items = generateMessages(5000, 42);
+	let items = $state(generateMessages(5000, 42));
+	let olderMessageId = $state(0);
+	let isLoadingOlder = $state(false);
+
+	function buildOlderMessages(count: number): Message[] {
+		const batch = generateMessages(count, Date.now());
+		return batch.map((message) => ({
+			id: olderMessageId--,
+			text: `Older: ${message.text}`,
+			height: message.height
+		}));
+	}
+
 	type VirtuaListApi = {
 		scrollToIndex(index: number, smooth: boolean): void;
 		scrollToOffset(offset: number): void;
+		captureAnchor(): ScrollAnchor | null;
+		restoreAnchor(anchor: ScrollAnchor | null): void;
 	};
 	let listRef: VirtuaListApi | undefined = $state();
 
@@ -25,12 +41,30 @@
 		const randomIndex = Math.floor(Math.random() * items.length);
 		listRef?.scrollToIndex(randomIndex, true);
 	}
+
+	async function loadOlder() {
+		if (isLoadingOlder) {
+			return;
+		}
+
+		isLoadingOlder = true;
+		const anchor = listRef?.captureAnchor() ?? null;
+		const olderMessages = buildOlderMessages(100);
+
+		items = [...olderMessages, ...items];
+		await tick();
+		listRef?.restoreAnchor(anchor);
+		isLoadingOlder = false;
+	}
 </script>
 
 <main class="page">
 	<h1>Virtual List Benchmark</h1>
 
 	<div class="controls">
+		<button type="button" onclick={loadOlder} disabled={isLoadingOlder}>
+			{isLoadingOlder ? "Loading..." : "Load older (prepend 100)"}
+		</button>
 		<button type="button" onclick={scrollTop}>Scroll top</button>
 		<button type="button" onclick={scrollMiddle}>Scroll middle</button>
 		<button type="button" onclick={scrollBottom}>Scroll bottom</button>
