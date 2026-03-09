@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      virtua:
+        specifier: ^0.48.6
+        version: 0.48.6(svelte@5.53.7)
     devDependencies:
       '@sveltejs/adapter-auto':
         specifier: ^7.0.0
@@ -544,6 +548,26 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  virtua@0.48.6:
+    resolution: {integrity: sha512-Cl4uMvMV5c9RuOy9zhkFMYwx/V4YLBMYLRSWkO8J46opQZ3P7KMq0CqCVOOAKUckjl/r//D2jWTBGYWzmgtzrQ==}
+    peerDependencies:
+      react: '>=16.14.0'
+      react-dom: '>=16.14.0'
+      solid-js: '>=1.0'
+      svelte: '>=5.0'
+      vue: '>=3.2'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      solid-js:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+
   vite@7.3.1:
     resolution: {integrity: sha512-w+N7Hifpc3gRjZ63vYBXA56dvvRlNWRczTdmCBBa+CotUzAPf5b7YMdMR/8CQoeYE5LX3W4wj6RYTgonm1b9DA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1000,6 +1024,10 @@ snapshots:
   totalist@3.0.1: {}
 
   typescript@5.9.3: {}
+
+  virtua@0.48.6(svelte@5.53.7):
+    optionalDependencies:
+      svelte: 5.53.7
 
   vite@7.3.1:
     dependencies:
