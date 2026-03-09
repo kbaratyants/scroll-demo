@@ -19,6 +19,7 @@
 		onToggleMessageExpand?: (id: number) => void;
 	} = $props();
 	let listRef: VListHandle | undefined = $state();
+	let optimizedScrollGeneration = 0;
 
 	interface MessageGroup {
 		date: string;
@@ -71,8 +72,14 @@
 		listRef?.scrollToIndex(findGroupIndexByMessageIndex(boundedIndex), opts);
 	}
 
+	function waitForLayout(): Promise<void> {
+		return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+	}
+
 	export async function scrollToIndexOptimized(index: number): Promise<void> {
-		if (!listRef) return;
+		if (!listRef || !items.length) return;
+
+		const generation = ++optimizedScrollGeneration;
 
 		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
 		const groupIndex = findGroupIndexByMessageIndex(boundedIndex);
@@ -81,16 +88,26 @@
 		const targetOffset = listRef.getItemOffset(groupIndex);
 		const distance = Math.abs(targetOffset - currentOffset);
 
+		if (distance === 0) return;
+
 		if (distance <= MAX_ANIMATED_SCROLL_PX) {
 			listRef.scrollToIndex(groupIndex, { smooth: true });
 			return;
 		}
 
 		const direction = Math.sign(targetOffset - currentOffset);
-		const jumpOffset = targetOffset - direction * MAX_ANIMATED_SCROLL_PX;
+		const maxScroll = listRef.getScrollSize() - listRef.getViewportSize();
+		const jumpOffset = Math.max(0, Math.min(
+			targetOffset - direction * MAX_ANIMATED_SCROLL_PX,
+			maxScroll
+		));
+
 		listRef.scrollTo(jumpOffset);
 
 		await tick();
+		await waitForLayout();
+
+		if (generation !== optimizedScrollGeneration) return;
 
 		listRef.scrollToIndex(groupIndex, { smooth: true });
 	}
