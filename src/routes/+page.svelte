@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
+	import DatePicker from "$lib/components/DatePicker.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
 	import { createFpsMonitor } from "$lib/metrics/fps";
 	import { countNodesInScrollContainer } from "$lib/metrics/dom";
+	import {
+		getDateLabel,
+		findFirstMessageIndexByDate,
+		getDateRange,
+		getDateFromMessageId
+	} from "$lib/utils/dates";
 
 	const STRESS_SCENARIOS = [10000, 50000, 100000] as const;
 	const METRIC_POLL_INTERVAL_MS = 250;
@@ -74,6 +81,27 @@
 		if (Number.isNaN(parsed)) return;
 		const clamped = Math.max(0, Math.min(parsed, items.length - 1));
 		scrollByMode(clamped);
+	}
+
+	let datePickerOpen = $state(false);
+	let datePickerAnchor = $state({ year: 2024, month: 0, day: 1 });
+
+	function openDatePicker(dateLabel: string) {
+		if (!items.length) return;
+		const firstMsg = items.find((m) => getDateLabel(m.id) === dateLabel);
+		if (firstMsg) {
+			const d = getDateFromMessageId(firstMsg.id);
+			datePickerAnchor = { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+		}
+		datePickerOpen = true;
+	}
+
+	function handleDateSelect(date: Date) {
+		datePickerOpen = false;
+		const index = findFirstMessageIndexByDate(items, date);
+		if (index !== -1) {
+			listRef?.scrollToIndexOptimized(index);
+		}
 	}
 
 	function formatMetric(value: number): string {
@@ -212,8 +240,22 @@
 			{items}
 			{expandedMessageIds}
 			onToggleMessageExpand={toggleMessageExpanded}
+			onDateHeaderClick={openDatePicker}
 		/>
 	</div>
+
+	{#if datePickerOpen}
+		{@const range = getDateRange(items)}
+		<DatePicker
+			initialYear={datePickerAnchor.year}
+			initialMonth={datePickerAnchor.month}
+			initialDay={datePickerAnchor.day}
+			minDate={range?.min}
+			maxDate={range?.max}
+			onselect={handleDateSelect}
+			onclose={() => (datePickerOpen = false)}
+		/>
+	{/if}
 </main>
 
 <style>

@@ -6,17 +6,20 @@
 	import MessageItem from "$lib/components/MessageItem.svelte";
 	import DateHeader from "$lib/components/DateHeader.svelte";
 	import type { Message } from "$lib/data/messages";
+	import { getDateLabel } from "$lib/utils/dates";
 
 	const MAX_ANIMATED_SCROLL_PX = 3000;
 
 	let {
 		items,
 		expandedMessageIds = new Set<number>(),
-		onToggleMessageExpand
+		onToggleMessageExpand,
+		onDateHeaderClick
 	}: {
 		items: Message[];
 		expandedMessageIds?: ReadonlySet<number>;
 		onToggleMessageExpand?: (id: number) => void;
+		onDateHeaderClick?: (date: string) => void;
 	} = $props();
 	let listRef: VListHandle | undefined = $state();
 	let optimizedScrollGeneration = 0;
@@ -26,13 +29,6 @@
 		messages: Message[];
 		startIndex: number;
 		endIndex: number;
-	}
-
-	function getDateLabel(messageId: number): string {
-		const baseDate = new Date(2024, 0, 1);
-		const dayOffset = Math.floor(messageId / 40);
-		baseDate.setDate(baseDate.getDate() + dayOffset);
-		return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "long" }).format(baseDate);
 	}
 
 	let groups: MessageGroup[] = $derived.by(() => {
@@ -127,7 +123,10 @@
 	>
 		{#snippet children(group)}
 			<section>
-				<DateHeader date={group.date} />
+				<DateHeader
+					date={group.date}
+					onclick={() => onDateHeaderClick?.(group.date)}
+				/>
 				{#each group.messages as message (message.id)}
 					<MessageItem
 						{message}
