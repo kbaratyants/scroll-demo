@@ -36,27 +36,26 @@
 		startIndex: number;
 	}
 
-	type FlatListItem =
+type FlatItem =
 		| {
-				kind: "header";
+				type: "header";
 				key: string;
-				date: string;
-				groupIndex: number;
+				date: number;
 		  }
 		| {
-				kind: "message";
+				type: "message";
 				key: string;
 				message: Message;
-				groupIndex: number;
 		  };
 
 	let flattenResult = $derived.by(() => {
-		const flatItems: FlatListItem[] = [];
+		const flatItems: FlatItem[] = [];
 		const groups: GroupMeta[] = [];
 		const messageIndexToGroupIndex = new Int32Array(items.length);
 		const flatIndexToGroupIndex: number[] = [];
 		let currentDate = "";
 		let currentGroupIndex = -1;
+		let currentGroupHeaderDate = -1;
 
 		for (let i = 0; i < items.length; i += 1) {
 			const message = items[i];
@@ -65,24 +64,23 @@
 			if (date !== currentDate) {
 				currentDate = date;
 				currentGroupIndex += 1;
+				currentGroupHeaderDate = message.id;
 				groups.push({
 					date,
 					startIndex: flatItems.length
 				});
 				flatItems.push({
-					kind: "header",
-					key: `header-${currentGroupIndex}-${date}`,
-					date,
-					groupIndex: currentGroupIndex
+					type: "header",
+					key: `header-${date}-${currentGroupHeaderDate}`,
+					date: currentGroupHeaderDate
 				});
 				flatIndexToGroupIndex.push(currentGroupIndex);
 			}
 
 			flatItems.push({
-				kind: "message",
+				type: "message",
 				key: `message-${message.id}`,
-				message,
-				groupIndex: currentGroupIndex
+				message
 			});
 			messageIndexToGroupIndex[i] = currentGroupIndex;
 			flatIndexToGroupIndex.push(currentGroupIndex);
@@ -271,11 +269,11 @@
 		getKey={(item) => item.key}
 	>
 		{#snippet children(item, index)}
-			{#if item.kind === "header"}
+			{#if item.type === "header"}
 				<section class="group-header-row" data-group-header-index={index}>
 				<DateHeader
-					date={item.date}
-					onclick={() => onDateHeaderClick?.(item.date)}
+					date={getDateLabel(item.date)}
+					onclick={() => onDateHeaderClick?.(getDateLabel(item.date))}
 				/>
 				</section>
 			{:else}
