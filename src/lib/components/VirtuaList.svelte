@@ -30,6 +30,7 @@
 	let activeGroupIndex = $state(0);
 	let floatingHeaderOffsetY = $state(0);
 	let scrollUpdateRafId = 0;
+	const headerRefs = new Map<number, HTMLElement>();
 
 	interface GroupMeta {
 	date: number;
@@ -245,9 +246,7 @@ type FlatItem =
 			return;
 		}
 
-		const nextHeaderEl = listContainer.querySelector<HTMLElement>(
-			`[data-group-header-index="${nextGroup.startIndex}"]`
-		);
+		const nextHeaderEl = headerRefs.get(nextGroup.startIndex);
 		if (!nextHeaderEl) {
 			floatingHeaderOffsetY = 0;
 			return;
@@ -264,6 +263,23 @@ type FlatItem =
 			scrollUpdateRafId = 0;
 			updateFloatingHeaderState();
 		});
+	}
+
+	function registerHeaderRef(node: HTMLElement, headerIndex: number) {
+		let currentHeaderIndex = headerIndex;
+		headerRefs.set(currentHeaderIndex, node);
+
+		return {
+			update(nextHeaderIndex: number) {
+				if (nextHeaderIndex === currentHeaderIndex) return;
+				headerRefs.delete(currentHeaderIndex);
+				currentHeaderIndex = nextHeaderIndex;
+				headerRefs.set(currentHeaderIndex, node);
+			},
+			destroy() {
+				headerRefs.delete(currentHeaderIndex);
+			}
+		};
 	}
 
 	$effect(() => {
@@ -295,7 +311,11 @@ type FlatItem =
 	>
 		{#snippet children(item, index)}
 			{#if item.type === "header"}
-				<section class="group-header-row" data-group-header-index={index}>
+				<section
+					class="group-header-row"
+					data-group-header-index={index}
+					use:registerHeaderRef={index}
+				>
 				<DateHeader
 					date={getDateLabel(item.date)}
 					onclick={() => onDateHeaderClick?.(getDateLabel(item.date))}
@@ -336,7 +356,7 @@ type FlatItem =
 		position: absolute;
 		top: 0;
 		left: 0;
-		right: 0;
+		right: var(--scrollbar-width);
 		z-index: 5;
 		pointer-events: none;
 	}
