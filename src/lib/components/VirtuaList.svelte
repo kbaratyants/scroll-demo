@@ -231,30 +231,35 @@ type FlatItem =
 	}
 
 	function updateFloatingHeaderState(): void {
+		let nextActiveGroupIndex = 0;
+		let nextFloatingHeaderOffsetY = 0;
+
 		if (!groups.length || !listRef) {
-			activeGroupIndex = 0;
-			floatingHeaderOffsetY = 0;
+			// Keep default next values.
+		} else {
+			const firstVisibleIndex = getFirstVisibleIndex();
+			nextActiveGroupIndex = findGroupByFlatIndex(firstVisibleIndex);
+			const nextGroup = groups[nextActiveGroupIndex + 1];
+
+			if (nextGroup && listContainer && floatingHeaderHeight) {
+				const nextHeaderEl = headerRefs.get(nextGroup.startIndex);
+				if (nextHeaderEl) {
+					const containerTop = listContainer.getBoundingClientRect().top;
+					const nextHeaderTop = nextHeaderEl.getBoundingClientRect().top - containerTop;
+					nextFloatingHeaderOffsetY = Math.min(0, nextHeaderTop - floatingHeaderHeight);
+				}
+			}
+		}
+
+		if (
+			activeGroupIndex === nextActiveGroupIndex &&
+			floatingHeaderOffsetY === nextFloatingHeaderOffsetY
+		) {
 			return;
 		}
 
-		const firstVisibleIndex = getFirstVisibleIndex();
-		activeGroupIndex = findGroupByFlatIndex(firstVisibleIndex);
-		const nextGroup = groups[activeGroupIndex + 1];
-
-		if (!nextGroup || !listContainer || !floatingHeaderHeight) {
-			floatingHeaderOffsetY = 0;
-			return;
-		}
-
-		const nextHeaderEl = headerRefs.get(nextGroup.startIndex);
-		if (!nextHeaderEl) {
-			floatingHeaderOffsetY = 0;
-			return;
-		}
-
-		const containerTop = listContainer.getBoundingClientRect().top;
-		const nextHeaderTop = nextHeaderEl.getBoundingClientRect().top - containerTop;
-		floatingHeaderOffsetY = Math.min(0, nextHeaderTop - floatingHeaderHeight);
+		activeGroupIndex = nextActiveGroupIndex;
+		floatingHeaderOffsetY = nextFloatingHeaderOffsetY;
 	}
 
 	function scheduleFloatingHeaderUpdate(): void {
@@ -356,7 +361,7 @@ type FlatItem =
 		position: absolute;
 		top: 0;
 		left: 0;
-		right: var(--scrollbar-width);
+		right: 24px;
 		z-index: 5;
 		pointer-events: none;
 	}
