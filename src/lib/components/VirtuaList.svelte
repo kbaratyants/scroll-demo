@@ -243,11 +243,23 @@ type FlatItem =
 			nextActiveGroupIndex = findGroupByFlatIndex(firstVisibleIndex);
 			const nextGroup = groups[nextActiveGroupIndex + 1];
 
-			if (nextGroup && listContainer && floatingHeaderHeight) {
-				const nextHeaderEl = headerRefs.get(nextGroup.startIndex);
-				if (nextHeaderEl) {
-					const containerTop = listContainer.getBoundingClientRect().top;
-					const nextHeaderTop = nextHeaderEl.getBoundingClientRect().top - containerTop;
+			if (nextGroup && floatingHeaderHeight) {
+				const nextHeaderIndex = nextGroup.startIndex;
+				const scrollOffset = listRef.getScrollOffset();
+				const nextHeaderOffset = listRef.getItemOffset(nextHeaderIndex);
+				let nextHeaderTop = nextHeaderOffset - scrollOffset;
+
+				// Virtua-first path is preferred to avoid DOM reads in scroll/RAF hot path.
+				// Fallback to DOM only when Virtua position looks invalid/suspicious.
+				if (!Number.isFinite(nextHeaderTop) || nextHeaderTop < -1) {
+					const nextHeaderEl = headerRefs.get(nextHeaderIndex);
+					if (nextHeaderEl && listContainer) {
+						const containerTop = listContainer.getBoundingClientRect().top;
+						nextHeaderTop = nextHeaderEl.getBoundingClientRect().top - containerTop;
+					}
+				}
+
+				if (Number.isFinite(nextHeaderTop)) {
 					nextFloatingHeaderOffsetY = Math.min(0, nextHeaderTop - floatingHeaderHeight);
 				}
 			}
