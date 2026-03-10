@@ -1,19 +1,26 @@
 <script lang="ts">
 	let {
 		date,
+		offsetY = 0,
 		onclick
 	}: {
 		date: string;
+		offsetY?: number;
 		onclick?: () => void;
 	} = $props();
 </script>
 
-<button type="button" class="date-header" onclick={onclick}>
+<button
+	type="button"
+	class="floating-date-header"
+	style={`transform: translateY(${offsetY}px);`}
+	onclick={onclick}
+>
 	<span>{date}</span>
 </button>
 
 <style>
-	.date-header {
+	.floating-date-header {
 		display: block;
 		width: 100%;
 		background: white;
@@ -25,9 +32,10 @@
 		color: #4b5563;
 		cursor: pointer;
 		text-align: left;
+		will-change: transform;
 	}
 
-	.date-header:hover {
+	.floating-date-header:hover {
 		background: #f3f4f6;
 		color: #1f2937;
 	}
