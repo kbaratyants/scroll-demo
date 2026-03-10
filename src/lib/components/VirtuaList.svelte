@@ -32,7 +32,7 @@
 	let scrollUpdateRafId = 0;
 
 	interface GroupMeta {
-		date: string;
+	date: number;
 		startIndex: number;
 	}
 
@@ -50,9 +50,7 @@ type FlatItem =
 
 	let flattenResult = $derived.by(() => {
 		const flatItems: FlatItem[] = [];
-		const groups: GroupMeta[] = [];
 		const messageIndexToGroupIndex = new Int32Array(items.length);
-		const flatIndexToGroupIndex: number[] = [];
 		let currentDate = "";
 		let currentGroupIndex = -1;
 		let currentGroupHeaderDate = -1;
@@ -65,16 +63,11 @@ type FlatItem =
 				currentDate = date;
 				currentGroupIndex += 1;
 				currentGroupHeaderDate = message.id;
-				groups.push({
-					date,
-					startIndex: flatItems.length
-				});
 				flatItems.push({
 					type: "header",
 					key: `header-${date}-${currentGroupHeaderDate}`,
 					date: currentGroupHeaderDate
 				});
-				flatIndexToGroupIndex.push(currentGroupIndex);
 			}
 
 			flatItems.push({
@@ -83,21 +76,47 @@ type FlatItem =
 				message
 			});
 			messageIndexToGroupIndex[i] = currentGroupIndex;
-			flatIndexToGroupIndex.push(currentGroupIndex);
 		}
 
 		return {
 			flatItems,
+			messageIndexToGroupIndex
+		};
+	});
+
+	let groupMetaResult = $derived.by(() => {
+		const groups: GroupMeta[] = [];
+		const dateIndex = new Map<number, number>();
+		const flatIndexToGroupIndex: number[] = new Array(flatItems.length);
+		let currentGroupIndex = -1;
+
+		for (let i = 0; i < flatItems.length; i += 1) {
+			const item = flatItems[i];
+			if (item.type === "header") {
+				currentGroupIndex += 1;
+				groups.push({
+					date: item.date,
+					startIndex: i
+				});
+				dateIndex.set(item.date, i);
+			}
+
+			flatIndexToGroupIndex[i] = currentGroupIndex >= 0 ? currentGroupIndex : 0;
+		}
+
+		return {
 			groups,
-			messageIndexToGroupIndex,
+			dateIndex,
 			flatIndexToGroupIndex
 		};
 	});
 	let flatItems = $derived(flattenResult.flatItems);
-	let groups = $derived(flattenResult.groups);
 	let messageIndexToGroupIndex = $derived(flattenResult.messageIndexToGroupIndex);
-	let flatIndexToGroupIndex = $derived(flattenResult.flatIndexToGroupIndex);
-	let activeGroupDate = $derived(groups[activeGroupIndex]?.date ?? "");
+	let groups = $derived(groupMetaResult.groups);
+	let dateIndex = $derived(groupMetaResult.dateIndex);
+	let flatIndexToGroupIndex = $derived(groupMetaResult.flatIndexToGroupIndex);
+	let activeGroupDate = $derived(groups[activeGroupIndex]?.date ?? -1);
+	let activeGroupDateLabel = $derived(activeGroupDate >= 0 ? getDateLabel(activeGroupDate) : "");
 
 	function findGroupIndexByMessageIndex(index: number): number {
 		if (!groups.length) {
@@ -142,6 +161,12 @@ type FlatItem =
 		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
 		const targetGroupIndex = findGroupIndexByMessageIndex(boundedIndex);
 		const targetFlatIndex = groups[targetGroupIndex]?.startIndex ?? 0;
+		listRef?.scrollToIndex(targetFlatIndex, opts);
+	}
+
+	export function scrollToDate(date: number, opts?: ScrollToIndexOpts): void {
+		const targetFlatIndex = dateIndex.get(date);
+		if (targetFlatIndex == null) return;
 		listRef?.scrollToIndex(targetFlatIndex, opts);
 	}
 
@@ -286,12 +311,12 @@ type FlatItem =
 		{/snippet}
 	</VList>
 
-	{#if activeGroupDate}
+	{#if activeGroupDateLabel}
 		<div class="floating-header-layer" bind:this={floatingHeaderEl}>
 			<FloatingGroupHeader
-				date={activeGroupDate}
+				date={activeGroupDateLabel}
 				offsetY={floatingHeaderOffsetY}
-				onclick={() => onDateHeaderClick?.(activeGroupDate)}
+				onclick={() => onDateHeaderClick?.(activeGroupDateLabel)}
 			/>
 		</div>
 	{/if}
