@@ -31,6 +31,8 @@
 	let floatingHeaderOffsetY = $state(0);
 	let scrollUpdateRafId = 0;
 	const headerRefs = new Map<number, HTMLElement>();
+	let containerResizeObserver: ResizeObserver | undefined;
+	let headerResizeObserver: ResizeObserver | undefined;
 
 	interface GroupMeta {
 	date: number;
@@ -270,18 +272,35 @@ type FlatItem =
 		});
 	}
 
+	function getHeaderResizeObserver(): ResizeObserver | undefined {
+		if (typeof ResizeObserver === "undefined") return undefined;
+		if (!headerResizeObserver) {
+			headerResizeObserver = new ResizeObserver(() => {
+				scheduleFloatingHeaderUpdate();
+			});
+			for (const headerEl of headerRefs.values()) {
+				headerResizeObserver.observe(headerEl);
+			}
+		}
+		return headerResizeObserver;
+	}
+
 	function registerHeaderRef(node: HTMLElement, headerIndex: number) {
 		let currentHeaderIndex = headerIndex;
 		headerRefs.set(currentHeaderIndex, node);
+		getHeaderResizeObserver()?.observe(node);
 
 		return {
 			update(nextHeaderIndex: number) {
 				if (nextHeaderIndex === currentHeaderIndex) return;
+				getHeaderResizeObserver()?.unobserve(node);
 				headerRefs.delete(currentHeaderIndex);
 				currentHeaderIndex = nextHeaderIndex;
 				headerRefs.set(currentHeaderIndex, node);
+				getHeaderResizeObserver()?.observe(node);
 			},
 			destroy() {
+				getHeaderResizeObserver()?.unobserve(node);
 				headerRefs.delete(currentHeaderIndex);
 			}
 		};
@@ -297,10 +316,28 @@ type FlatItem =
 	});
 
 	$effect(() => {
+		if (typeof ResizeObserver === "undefined" || !listContainer) return;
+		containerResizeObserver?.disconnect();
+		containerResizeObserver = new ResizeObserver(() => {
+			scheduleFloatingHeaderUpdate();
+		});
+		containerResizeObserver.observe(listContainer);
+
+		return () => {
+			containerResizeObserver?.disconnect();
+			containerResizeObserver = undefined;
+		};
+	});
+
+	$effect(() => {
 		return () => {
 			if (scrollUpdateRafId) {
 				cancelAnimationFrame(scrollUpdateRafId);
 			}
+			containerResizeObserver?.disconnect();
+			containerResizeObserver = undefined;
+			headerResizeObserver?.disconnect();
+			headerResizeObserver = undefined;
 		};
 	});
 </script>
