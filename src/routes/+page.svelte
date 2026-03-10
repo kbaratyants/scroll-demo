@@ -41,10 +41,19 @@
 		scrollToIndex(index: number, opts?: { smooth?: boolean }): void;
 		scrollToIndexOptimized(index: number): Promise<void>;
 		scrollToOffset(offset: number): void;
+		getScrollOffset(): number;
 	};
 	let listRef: VirtuaListApi | undefined = $state();
 	let scrollMode = $state<ScrollMode>("instant");
 	let goToIndexInput = $state("");
+	let listHeightPx = $state(600);
+	let isResizingList = $state(false);
+	let resizeStartY = 0;
+	let resizeStartHeight = 0;
+	let resizePointerId: number | null = null;
+	let resizeHandleEl: HTMLButtonElement | null = $state(null);
+	const MIN_LIST_HEIGHT_PX = 280;
+	const MAX_LIST_HEIGHT_PX = 1100;
 
 	function scrollByMode(index: number) {
 		if (!listRef) return;
@@ -81,6 +90,41 @@
 		if (Number.isNaN(parsed)) return;
 		const clamped = Math.max(0, Math.min(parsed, items.length - 1));
 		scrollByMode(clamped);
+	}
+
+	function applyListHeight(nextHeight: number): void {
+		const clampedHeight = Math.max(
+			MIN_LIST_HEIGHT_PX,
+			Math.min(MAX_LIST_HEIGHT_PX, Math.round(nextHeight))
+		);
+		if (clampedHeight === listHeightPx) return;
+		const currentOffset = listRef?.getScrollOffset() ?? 0;
+		listHeightPx = clampedHeight;
+		requestAnimationFrame(() => {
+			listRef?.scrollToOffset(currentOffset);
+		});
+	}
+
+	function startListResize(event: PointerEvent): void {
+		if (event.button !== 0) return;
+		isResizingList = true;
+		resizeStartY = event.clientY;
+		resizeStartHeight = listHeightPx;
+		resizePointerId = event.pointerId;
+		resizeHandleEl?.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+
+	function continueListResize(event: PointerEvent): void {
+		if (!isResizingList || resizePointerId !== event.pointerId) return;
+		applyListHeight(resizeStartHeight + (event.clientY - resizeStartY));
+	}
+
+	function finishListResize(event: PointerEvent): void {
+		if (!isResizingList || resizePointerId !== event.pointerId) return;
+		isResizingList = false;
+		resizePointerId = null;
+		resizeHandleEl?.releasePointerCapture(event.pointerId);
 	}
 
 	let datePickerOpen = $state(false);
@@ -234,14 +278,26 @@
 		</div>
 	</section>
 
-	<div bind:this={scrollMetricsRoot}>
+	<div class="list-resize-shell" bind:this={scrollMetricsRoot}>
 		<VirtuaList
 			bind:this={listRef}
 			{items}
+			heightPx={listHeightPx}
 			{expandedMessageIds}
 			onToggleMessageExpand={toggleMessageExpanded}
 			onDateHeaderClick={openDatePicker}
 		/>
+		<button
+			bind:this={resizeHandleEl}
+			type="button"
+			class="resize-handle"
+			class:is-resizing={isResizingList}
+			aria-label="Resize list height"
+			onpointerdown={startListResize}
+			onpointermove={continueListResize}
+			onpointerup={finishListResize}
+			onpointercancel={finishListResize}
+		></button>
 	</div>
 
 	{#if datePickerOpen}
@@ -359,5 +415,37 @@
 		font-size: 0.8rem;
 		color: #6b7280;
 		margin-bottom: 2px;
+	}
+
+	.list-resize-shell {
+		position: relative;
+	}
+
+	.resize-handle {
+		display: block;
+		width: 100%;
+		height: 12px;
+		margin-top: 4px;
+		padding: 0;
+		border: none;
+		border-radius: 8px;
+		background:
+			repeating-linear-gradient(
+				90deg,
+				#cbd5e1 0,
+				#cbd5e1 8px,
+				transparent 8px,
+				transparent 14px
+			)
+			center / 120px 2px no-repeat;
+		cursor: ns-resize;
+		touch-action: none;
+		opacity: 0.8;
+	}
+
+	.resize-handle:hover,
+	.resize-handle.is-resizing {
+		opacity: 1;
+		background-color: #f3f4f6;
 	}
 </style>

@@ -13,11 +13,13 @@
 
 	let {
 		items,
+		heightPx = 600,
 		expandedMessageIds = new Set<number>(),
 		onToggleMessageExpand,
 		onDateHeaderClick
 	}: {
 		items: Message[];
+		heightPx?: number;
 		expandedMessageIds?: ReadonlySet<number>;
 		onToggleMessageExpand?: (id: number) => void;
 		onDateHeaderClick?: (date: string) => void;
@@ -218,6 +220,10 @@ type FlatItem =
 		listRef?.scrollTo(offset);
 	}
 
+	export function getScrollOffset(): number {
+		return listRef?.getScrollOffset() ?? 0;
+	}
+
 	function measureFloatingHeaderHeight(): void {
 		floatingHeaderHeight = floatingHeaderEl?.offsetHeight ?? 0;
 	}
@@ -358,7 +364,7 @@ type FlatItem =
 	<VList
 		bind:this={listRef}
 		data={flatItems}
-		style="height: 600px;"
+		style={`height: ${heightPx}px;`}
 		shift={true}
 		onscroll={scheduleFloatingHeaderUpdate}
 		getKey={(item) => item.key}
