@@ -1,37 +1,51 @@
 <script lang="ts">
 	import { tick } from "svelte";
-	import { VList } from "virtua/svelte";
-	import type { VListHandle } from "virtua/svelte";
 	import type { ScrollToIndexOpts } from "virtua";
 	import type { Message } from "$lib/data/messages";
+	import VirtuaList from "$lib/components/VirtuaList.svelte";
 
 	const LOAD_MORE_THRESHOLD_PX = 500;
-	const MAX_ANIMATED_SCROLL_PX = 3000;
+	const REARM_FACTOR = 2;
+
+	type VirtuaListApi = {
+		scrollToIndex(index: number, opts?: ScrollToIndexOpts): void;
+		scrollToIndexOptimized(index: number): Promise<void>;
+		scrollToOffset(offset: number): void;
+		getScrollOffset(): number;
+		getScrollSize(): number;
+		getViewportSize(): number;
+	};
 
 	let {
 		items,
 		heightPx = 600,
-		isLoadingMore = false,
-		hasMore = true,
-		onLoadMore
+		shift = false,
+		isLoadingTop = false,
+		isLoadingBottom = false,
+		hasMoreTop = true,
+		hasMoreBottom = true,
+		onLoadTop,
+		onLoadBottom
 	}: {
 		items: Message[];
 		heightPx?: number;
-		isLoadingMore?: boolean;
-		hasMore?: boolean;
-		onLoadMore?: () => void;
+		shift?: boolean;
+		isLoadingTop?: boolean;
+		isLoadingBottom?: boolean;
+		hasMoreTop?: boolean;
+		hasMoreBottom?: boolean;
+		onLoadTop?: () => void;
+		onLoadBottom?: () => void;
 	} = $props();
 
-	let listRef: VListHandle | undefined = $state();
-	let optimizedScrollGeneration = 0;
-	let loadScheduled = false;
+	let listRef: VirtuaListApi | undefined = $state();
+	let topLoadScheduled = false;
+	let bottomLoadScheduled = false;
+	let topLoadLocked = false;
+	let bottomLoadLocked = false;
 
-	function waitForLayout(): Promise<void> {
-		return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-	}
-
-	function requestLoadMoreIfNeeded(): void {
-		if (!listRef || !hasMore || isLoadingMore || loadScheduled) {
+	function requestLoadBottomIfNeeded(): void {
+		if (!listRef || !hasMoreBottom || isLoadingBottom || bottomLoadScheduled || bottomLoadLocked) {
 			return;
 		}
 
@@ -39,58 +53,64 @@
 		const viewport = listRef.getViewportSize();
 		const scrollSize = listRef.getScrollSize();
 		const remaining = scrollSize - (offset + viewport);
+		if (remaining > LOAD_MORE_THRESHOLD_PX) return;
 
-		if (remaining > LOAD_MORE_THRESHOLD_PX) {
-			return;
-		}
-
-		loadScheduled = true;
+		bottomLoadLocked = true;
+		bottomLoadScheduled = true;
 		queueMicrotask(() => {
-			loadScheduled = false;
-			if (!isLoadingMore && hasMore) {
-				onLoadMore?.();
+			bottomLoadScheduled = false;
+			if (!isLoadingBottom && hasMoreBottom) {
+				onLoadBottom?.();
 			}
 		});
 	}
 
-	export function scrollToIndex(index: number, opts?: ScrollToIndexOpts): void {
-		if (!items.length) return;
-		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
-		listRef?.scrollToIndex(boundedIndex, opts);
-	}
-
-	export async function scrollToIndexOptimized(index: number): Promise<void> {
-		if (!listRef || !items.length) return;
-
-		const generation = ++optimizedScrollGeneration;
-		const boundedIndex = Math.max(0, Math.min(index, items.length - 1));
-		const currentOffset = listRef.getScrollOffset();
-		const targetOffset = listRef.getItemOffset(boundedIndex);
-		const distance = Math.abs(targetOffset - currentOffset);
-
-		if (distance === 0) return;
-		if (distance <= MAX_ANIMATED_SCROLL_PX) {
-			listRef.scrollToIndex(boundedIndex, { smooth: true });
+	function requestLoadTopIfNeeded(): void {
+		if (!listRef || !hasMoreTop || isLoadingTop || topLoadScheduled || topLoadLocked) {
 			return;
 		}
 
-		const direction = Math.sign(targetOffset - currentOffset);
-		const maxScroll = listRef.getScrollSize() - listRef.getViewportSize();
-		const jumpOffset = Math.max(
-			0,
-			Math.min(targetOffset - direction * MAX_ANIMATED_SCROLL_PX, maxScroll)
-		);
-		listRef.scrollTo(jumpOffset);
+		const offset = listRef.getScrollOffset();
+		if (offset > LOAD_MORE_THRESHOLD_PX) return;
 
-		await tick();
-		await waitForLayout();
-		if (generation !== optimizedScrollGeneration) return;
+		topLoadLocked = true;
+		topLoadScheduled = true;
+		queueMicrotask(() => {
+			topLoadScheduled = false;
+			if (!isLoadingTop && hasMoreTop) {
+				onLoadTop?.();
+			}
+		});
+	}
 
-		listRef.scrollToIndex(boundedIndex, { smooth: true });
+	function handleScroll(): void {
+		const offset = listRef?.getScrollOffset() ?? 0;
+		const viewport = listRef?.getViewportSize() ?? 0;
+		const scrollSize = listRef?.getScrollSize() ?? 0;
+		const remaining = scrollSize - (offset + viewport);
+
+		// Rearm triggers only after the user moves away from the edge.
+		if (offset > LOAD_MORE_THRESHOLD_PX * REARM_FACTOR) {
+			topLoadLocked = false;
+		}
+		if (remaining > LOAD_MORE_THRESHOLD_PX * REARM_FACTOR) {
+			bottomLoadLocked = false;
+		}
+
+		requestLoadTopIfNeeded();
+		requestLoadBottomIfNeeded();
+	}
+
+	export function scrollToIndex(index: number, opts?: ScrollToIndexOpts): void {
+		listRef?.scrollToIndex(index, opts);
+	}
+
+	export function scrollToIndexOptimized(index: number): Promise<void> {
+		return listRef?.scrollToIndexOptimized(index) ?? Promise.resolve();
 	}
 
 	export function scrollToOffset(offset: number): void {
-		listRef?.scrollTo(offset);
+		listRef?.scrollToOffset(offset);
 	}
 
 	export function getScrollOffset(): number {
@@ -99,31 +119,26 @@
 
 	$effect(() => {
 		items.length;
-		tick().then(requestLoadMoreIfNeeded);
+		tick().then(requestLoadBottomIfNeeded);
 	});
 </script>
 
 <div class="infinite-list-shell">
-	<VList
+	<VirtuaList
 		bind:this={listRef}
-		data={items}
-		style={`height: ${heightPx}px;`}
-		onscroll={requestLoadMoreIfNeeded}
-		getKey={(item) => item.id}
-	>
-		{#snippet children(item)}
-			<article class="item">
-				<div class="item-id">#{item.id}</div>
-				<p class="item-text">{item.text}</p>
-			</article>
-		{/snippet}
-	</VList>
+		{items}
+		{heightPx}
+		{shift}
+		onScroll={handleScroll}
+	/>
 
 	<div class="status-row" aria-live="polite">
-		{#if isLoadingMore}
+		{#if isLoadingTop}
+			Loading older...
+		{:else if isLoadingBottom}
 			Loading more...
-		{:else if !hasMore}
-			Reached max items.
+		{:else if !hasMoreTop && !hasMoreBottom}
+			Reached limits.
 		{/if}
 	</div>
 </div>
@@ -131,25 +146,6 @@
 <style>
 	.infinite-list-shell {
 		position: relative;
-	}
-
-	.item {
-		box-sizing: border-box;
-		padding: 12px 16px;
-		border-bottom: 1px solid #e5e7eb;
-	}
-
-	.item-id {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: #6b7280;
-		margin-bottom: 6px;
-	}
-
-	.item-text {
-		margin: 0;
-		line-height: 1.4;
-		color: #111827;
 	}
 
 	.status-row {

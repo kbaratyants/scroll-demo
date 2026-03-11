@@ -2,7 +2,7 @@
 	import { tick } from "svelte";
 	import { VList } from "virtua/svelte";
 	import type { VListHandle } from "virtua/svelte";
-	import type { ScrollToIndexOpts } from "virtua";
+	import type { CacheSnapshot, ScrollToIndexOpts } from "virtua";
 	import MessageItem from "$lib/components/MessageItem.svelte";
 	import DateHeader from "$lib/components/DateHeader.svelte";
 	import FloatingGroupHeader from "$lib/components/FloatingGroupHeader.svelte";
@@ -14,15 +14,21 @@
 	let {
 		items,
 		heightPx = 600,
+		shift = true,
+		cache,
 		expandedMessageIds = new Set<number>(),
 		onToggleMessageExpand,
-		onDateHeaderClick
+		onDateHeaderClick,
+		onScroll
 	}: {
 		items: Message[];
 		heightPx?: number;
+		shift?: boolean;
+		cache?: CacheSnapshot;
 		expandedMessageIds?: ReadonlySet<number>;
 		onToggleMessageExpand?: (id: number) => void;
 		onDateHeaderClick?: (date: string) => void;
+		onScroll?: (offset: number) => void;
 	} = $props();
 	let listRef: VListHandle | undefined = $state();
 	let optimizedScrollGeneration = 0;
@@ -224,6 +230,22 @@ type FlatItem =
 		return listRef?.getScrollOffset() ?? 0;
 	}
 
+	export function getScrollSize(): number {
+		return listRef?.getScrollSize() ?? 0;
+	}
+
+	export function getViewportSize(): number {
+		return listRef?.getViewportSize() ?? 0;
+	}
+
+	export function findItemIndex(offset: number): number {
+		return listRef?.findItemIndex(offset) ?? 0;
+	}
+
+	export function getCache(): CacheSnapshot | undefined {
+		return listRef?.getCache();
+	}
+
 	function measureFloatingHeaderHeight(): void {
 		floatingHeaderHeight = floatingHeaderEl?.offsetHeight ?? 0;
 	}
@@ -288,6 +310,11 @@ type FlatItem =
 			scrollUpdateRafId = 0;
 			updateFloatingHeaderState();
 		});
+	}
+
+	function handleScroll(offset: number): void {
+		scheduleFloatingHeaderUpdate();
+		onScroll?.(offset);
 	}
 
 	function getHeaderResizeObserver(): ResizeObserver | undefined {
@@ -365,8 +392,9 @@ type FlatItem =
 		bind:this={listRef}
 		data={flatItems}
 		style={`height: ${heightPx}px;`}
-		shift={true}
-		onscroll={scheduleFloatingHeaderUpdate}
+		{shift}
+		{cache}
+		onscroll={handleScroll}
 		getKey={(item) => item.key}
 	>
 		{#snippet children(item, index)}
@@ -385,7 +413,9 @@ type FlatItem =
 				<MessageItem
 					message={item.message}
 					expanded={expandedMessageIds.has(item.message.id)}
-					onToggleExpand={() => onToggleMessageExpand?.(item.message.id)}
+					onToggleExpand={onToggleMessageExpand
+						? () => onToggleMessageExpand(item.message.id)
+						: undefined}
 				/>
 			{/if}
 		{/snippet}

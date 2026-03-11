@@ -25,9 +25,11 @@
 	{#if expanded}
 		<p class="transcript">{buildTranscript(message.text)}</p>
 	{/if}
-	<button type="button" class="expand-toggle" onclick={onToggleExpand}>
-		{expanded ? "Collapse" : "Expand"}
-	</button>
+	{#if onToggleExpand}
+		<button type="button" class="expand-toggle" onclick={onToggleExpand}>
+			{expanded ? "Collapse" : "Expand"}
+		</button>
+	{/if}
 </article>
 
 <style>

@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
 	import VirtuaInfiniteList from "$lib/components/VirtuaInfiniteList.svelte";
+	import VirtuaRestorableList from "$lib/components/VirtuaRestorableList.svelte";
 	import DatePicker from "$lib/components/DatePicker.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
 	import { createFpsMonitor } from "$lib/metrics/fps";
@@ -17,19 +18,30 @@
 	const METRIC_POLL_INTERVAL_MS = 250;
 	const INITIAL_SCENARIO = STRESS_SCENARIOS[0];
 	const INFINITE_BATCH_SIZE = 200;
-	const INFINITE_MAX_ITEMS = 200000;
+	const INFINITE_MAX_NEWER_ITEMS = 200000;
+	const INFINITE_MAX_OLDER_ITEMS = 100000;
+	const INFINITE_INITIAL_ID_BASE = 1_000_000;
 
-	type DemoMode = "grouped" | "infinite";
-	const DEMO_MODES: DemoMode[] = ["grouped", "infinite"];
+	type DemoMode = "grouped" | "infinite" | "restorable";
+	const DEMO_MODES: DemoMode[] = ["grouped", "infinite", "restorable"];
+	const RESTORABLE_IDS = ["1", "2", "3"] as const;
 
 	let selectedScenario = $state<number>(INITIAL_SCENARIO);
 	let items = $state(generateMessages(INITIAL_SCENARIO, INITIAL_SCENARIO));
 	let olderMessageId = $state(0);
 	let isLoadingOlder = $state(false);
-	let isLoadingMore = $state(false);
-	let hasMoreInfinite = $state(true);
-	let nextInfiniteMessageId = $state(INITIAL_SCENARIO + 1);
+	let isLoadingInfiniteTop = $state(false);
+	let isLoadingInfiniteBottom = $state(false);
+	let hasMoreInfiniteTop = $state(true);
+	let hasMoreInfiniteBottom = $state(true);
+	let nextInfiniteMessageId = $state<number>(INFINITE_INITIAL_ID_BASE + INITIAL_SCENARIO);
+	let nextInfiniteOlderMessageId = $state<number>(INFINITE_INITIAL_ID_BASE - 1);
+	let loadedInfiniteBottomCount = $state<number>(INITIAL_SCENARIO);
+	let loadedInfiniteTopCount = $state<number>(0);
+	let infiniteUseShift = $state(false);
 	let demoMode = $state<DemoMode>("grouped");
+	let showRestorableList = $state(true);
+	let selectedRestorableId = $state<(typeof RESTORABLE_IDS)[number]>("1");
 	let expandedMessageIds = $state<Set<number>>(new Set());
 	let fps = $state(0);
 	let domNodes = $state(0);
@@ -167,14 +179,25 @@
 		if (demoMode === "grouped") {
 			items = generateMessages(size, size);
 			olderMessageId = 0;
+		} else if (demoMode === "infinite") {
+			items = generateMessages(size, size).map((message, index) => ({
+				id: INFINITE_INITIAL_ID_BASE + index,
+				text: message.text
+			}));
+			hasMoreInfiniteBottom = size < INFINITE_MAX_NEWER_ITEMS;
+			hasMoreInfiniteTop = true;
+			nextInfiniteMessageId = INFINITE_INITIAL_ID_BASE + size;
+			nextInfiniteOlderMessageId = INFINITE_INITIAL_ID_BASE - 1;
+			loadedInfiniteBottomCount = size;
+			loadedInfiniteTopCount = 0;
+			infiniteUseShift = false;
+			isLoadingInfiniteTop = false;
+			isLoadingInfiniteBottom = false;
 		} else {
 			items = generateMessages(size, size).map((message, index) => ({
 				id: index + 1,
 				text: message.text
 			}));
-			hasMoreInfinite = size < INFINITE_MAX_ITEMS;
-			nextInfiniteMessageId = size + 1;
-			isLoadingMore = false;
 		}
 		expandedMessageIds = new Set();
 		scrollTop();
@@ -211,17 +234,17 @@
 		isLoadingOlder = false;
 	}
 
-	async function loadMoreInfinite() {
-		if (demoMode !== "infinite" || isLoadingMore || !hasMoreInfinite) return;
+	async function loadMoreInfiniteBottom() {
+		if (demoMode !== "infinite" || isLoadingInfiniteBottom || !hasMoreInfiniteBottom) return;
 
-		isLoadingMore = true;
+		isLoadingInfiniteBottom = true;
 		await new Promise((resolve) => setTimeout(resolve, 500));
 
-		const remaining = Math.max(0, INFINITE_MAX_ITEMS - items.length);
+		const remaining = Math.max(0, INFINITE_MAX_NEWER_ITEMS - loadedInfiniteBottomCount);
 		const batchSize = Math.min(INFINITE_BATCH_SIZE, remaining);
 		if (batchSize === 0) {
-			hasMoreInfinite = false;
-			isLoadingMore = false;
+			hasMoreInfiniteBottom = false;
+			isLoadingInfiniteBottom = false;
 			return;
 		}
 
@@ -230,9 +253,41 @@
 			text: message.text
 		}));
 		nextInfiniteMessageId += batchSize;
+		loadedInfiniteBottomCount += batchSize;
 		items = [...items, ...newItems];
-		hasMoreInfinite = items.length < INFINITE_MAX_ITEMS;
-		isLoadingMore = false;
+		hasMoreInfiniteBottom = loadedInfiniteBottomCount < INFINITE_MAX_NEWER_ITEMS;
+		isLoadingInfiniteBottom = false;
+	}
+
+	async function loadMoreInfiniteTop() {
+		if (demoMode !== "infinite" || isLoadingInfiniteTop || !hasMoreInfiniteTop) return;
+
+		isLoadingInfiniteTop = true;
+		infiniteUseShift = true;
+		await new Promise((resolve) => setTimeout(resolve, 350));
+
+		const remaining = Math.max(0, INFINITE_MAX_OLDER_ITEMS - loadedInfiniteTopCount);
+		const batchSize = Math.min(INFINITE_BATCH_SIZE, remaining);
+		if (batchSize === 0) {
+			hasMoreInfiniteTop = false;
+			isLoadingInfiniteTop = false;
+			return;
+		}
+
+		const olderItemsStartId = nextInfiniteOlderMessageId - batchSize + 1;
+		const olderItems = generateMessages(batchSize, nextInfiniteOlderMessageId).map(
+			(message, index) => ({
+				id: olderItemsStartId + index,
+				text: `Older: ${message.text}`
+			})
+		);
+		nextInfiniteOlderMessageId = olderItemsStartId - 1;
+		loadedInfiniteTopCount += batchSize;
+		items = [...olderItems, ...items];
+		hasMoreInfiniteTop = loadedInfiniteTopCount < INFINITE_MAX_OLDER_ITEMS;
+		await tick();
+		infiniteUseShift = false;
+		isLoadingInfiniteTop = false;
 	}
 
 	onMount(() => {
@@ -300,6 +355,24 @@
 				{isLoadingOlder ? "Loading..." : "Load older (prepend 100)"}
 			</button>
 		{/if}
+		{#if demoMode === "restorable"}
+			<button type="button" onclick={() => (showRestorableList = !showRestorableList)}>
+				{showRestorableList ? "Hide list" : "Show list"}
+			</button>
+			<span class="restorable-id-group">
+				{#each RESTORABLE_IDS as id}
+					<label class="restorable-id-option">
+						<input
+							type="radio"
+							name="restorable-list-id"
+							checked={selectedRestorableId === id}
+							onchange={() => (selectedRestorableId = id)}
+						/>
+						{id}
+					</label>
+				{/each}
+			</span>
+		{/if}
 		<button type="button" onclick={scrollTop}>Top</button>
 		<button type="button" onclick={scrollMiddle}>Middle</button>
 		<button type="button" onclick={scrollBottom}>Bottom</button>
@@ -355,15 +428,32 @@
 				onToggleMessageExpand={toggleMessageExpanded}
 				onDateHeaderClick={openDatePicker}
 			/>
-		{:else}
+		{:else if demoMode === "infinite"}
 			<VirtuaInfiniteList
 				bind:this={listRef}
 				{items}
 				heightPx={listHeightPx}
-				isLoadingMore={isLoadingMore}
-				hasMore={hasMoreInfinite}
-				onLoadMore={loadMoreInfinite}
+				shift={infiniteUseShift}
+				isLoadingTop={isLoadingInfiniteTop}
+				isLoadingBottom={isLoadingInfiniteBottom}
+				hasMoreTop={hasMoreInfiniteTop}
+				hasMoreBottom={hasMoreInfiniteBottom}
+				onLoadTop={loadMoreInfiniteTop}
+				onLoadBottom={loadMoreInfiniteBottom}
 			/>
+		{:else}
+			{#if showRestorableList}
+				{#key `${selectedRestorableId}:${items.length}`}
+					<VirtuaRestorableList
+						bind:this={listRef}
+						{items}
+						heightPx={listHeightPx}
+						listId={selectedRestorableId}
+					/>
+				{/key}
+			{:else}
+				<div class="restorable-placeholder">List hidden. Click "Show list" to restore.</div>
+			{/if}
 		{/if}
 		<button
 			bind:this={resizeHandleEl}
@@ -447,6 +537,31 @@
 
 	.mode-btn:last-child {
 		border-right: none;
+	}
+
+	.restorable-id-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 0 2px;
+	}
+
+	.restorable-id-option {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 0.85rem;
+		color: #374151;
+	}
+
+	.restorable-placeholder {
+		height: 120px;
+		display: grid;
+		place-items: center;
+		border: 1px dashed #d1d5db;
+		border-radius: 10px;
+		color: #6b7280;
+		background: #f9fafb;
 	}
 
 	.goto-group {
