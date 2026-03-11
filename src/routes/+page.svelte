@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import VirtuaList from "$lib/components/VirtuaList.svelte";
+	import VirtuaInfiniteList from "$lib/components/VirtuaInfiniteList.svelte";
 	import DatePicker from "$lib/components/DatePicker.svelte";
 	import { generateMessages, type Message } from "$lib/data/messages";
 	import { createFpsMonitor } from "$lib/metrics/fps";
@@ -15,11 +16,20 @@
 	const STRESS_SCENARIOS = [10000, 50000, 100000] as const;
 	const METRIC_POLL_INTERVAL_MS = 250;
 	const INITIAL_SCENARIO = STRESS_SCENARIOS[0];
+	const INFINITE_BATCH_SIZE = 200;
+	const INFINITE_MAX_ITEMS = 200000;
+
+	type DemoMode = "grouped" | "infinite";
+	const DEMO_MODES: DemoMode[] = ["grouped", "infinite"];
 
 	let selectedScenario = $state<number>(INITIAL_SCENARIO);
 	let items = $state(generateMessages(INITIAL_SCENARIO, INITIAL_SCENARIO));
 	let olderMessageId = $state(0);
 	let isLoadingOlder = $state(false);
+	let isLoadingMore = $state(false);
+	let hasMoreInfinite = $state(true);
+	let nextInfiniteMessageId = $state(INITIAL_SCENARIO + 1);
+	let demoMode = $state<DemoMode>("grouped");
 	let expandedMessageIds = $state<Set<number>>(new Set());
 	let fps = $state(0);
 	let domNodes = $state(0);
@@ -154,10 +164,26 @@
 
 	function loadScenario(size: number) {
 		selectedScenario = size;
-		items = generateMessages(size, size);
-		olderMessageId = 0;
+		if (demoMode === "grouped") {
+			items = generateMessages(size, size);
+			olderMessageId = 0;
+		} else {
+			items = generateMessages(size, size).map((message, index) => ({
+				id: index + 1,
+				text: message.text
+			}));
+			hasMoreInfinite = size < INFINITE_MAX_ITEMS;
+			nextInfiniteMessageId = size + 1;
+			isLoadingMore = false;
+		}
 		expandedMessageIds = new Set();
 		scrollTop();
+	}
+
+	function switchDemoMode(nextMode: DemoMode) {
+		if (demoMode === nextMode) return;
+		demoMode = nextMode;
+		loadScenario(selectedScenario);
 	}
 
 	function toggleMessageExpanded(messageId: number) {
@@ -171,6 +197,9 @@
 	}
 
 	function loadOlder() {
+		if (demoMode !== "grouped") {
+			return;
+		}
 		if (isLoadingOlder) {
 			return;
 		}
@@ -180,6 +209,30 @@
 
 		items = [...olderMessages, ...items];
 		isLoadingOlder = false;
+	}
+
+	async function loadMoreInfinite() {
+		if (demoMode !== "infinite" || isLoadingMore || !hasMoreInfinite) return;
+
+		isLoadingMore = true;
+		await new Promise((resolve) => setTimeout(resolve, 500));
+
+		const remaining = Math.max(0, INFINITE_MAX_ITEMS - items.length);
+		const batchSize = Math.min(INFINITE_BATCH_SIZE, remaining);
+		if (batchSize === 0) {
+			hasMoreInfinite = false;
+			isLoadingMore = false;
+			return;
+		}
+
+		const newItems = generateMessages(batchSize, nextInfiniteMessageId).map((message, index) => ({
+			id: nextInfiniteMessageId + index,
+			text: message.text
+		}));
+		nextInfiniteMessageId += batchSize;
+		items = [...items, ...newItems];
+		hasMoreInfinite = items.length < INFINITE_MAX_ITEMS;
+		isLoadingMore = false;
 	}
 
 	onMount(() => {
@@ -221,6 +274,18 @@
 	<h1>Virtual List Benchmark</h1>
 
 	<div class="controls">
+		<span class="mode-group" aria-label="Demo mode">
+			{#each DEMO_MODES as mode}
+				<button
+					type="button"
+					class="mode-btn"
+					class:active={demoMode === mode}
+					onclick={() => switchDemoMode(mode)}
+				>
+					{mode}
+				</button>
+			{/each}
+		</span>
 		{#each STRESS_SCENARIOS as scenario}
 			<button
 				type="button"
@@ -230,9 +295,11 @@
 				Load {scenario / 1000}k
 			</button>
 		{/each}
-		<button type="button" onclick={loadOlder} disabled={isLoadingOlder}>
-			{isLoadingOlder ? "Loading..." : "Load older (prepend 100)"}
-		</button>
+		{#if demoMode === "grouped"}
+			<button type="button" onclick={loadOlder} disabled={isLoadingOlder}>
+				{isLoadingOlder ? "Loading..." : "Load older (prepend 100)"}
+			</button>
+		{/if}
 		<button type="button" onclick={scrollTop}>Top</button>
 		<button type="button" onclick={scrollMiddle}>Middle</button>
 		<button type="button" onclick={scrollBottom}>Bottom</button>
@@ -279,14 +346,25 @@
 	</section>
 
 	<div class="list-resize-shell" bind:this={scrollMetricsRoot}>
-		<VirtuaList
-			bind:this={listRef}
-			{items}
-			heightPx={listHeightPx}
-			{expandedMessageIds}
-			onToggleMessageExpand={toggleMessageExpanded}
-			onDateHeaderClick={openDatePicker}
-		/>
+		{#if demoMode === "grouped"}
+			<VirtuaList
+				bind:this={listRef}
+				{items}
+				heightPx={listHeightPx}
+				{expandedMessageIds}
+				onToggleMessageExpand={toggleMessageExpanded}
+				onDateHeaderClick={openDatePicker}
+			/>
+		{:else}
+			<VirtuaInfiniteList
+				bind:this={listRef}
+				{items}
+				heightPx={listHeightPx}
+				isLoadingMore={isLoadingMore}
+				hasMore={hasMoreInfinite}
+				onLoadMore={loadMoreInfinite}
+			/>
+		{/if}
 		<button
 			bind:this={resizeHandleEl}
 			type="button"
@@ -300,7 +378,7 @@
 		></button>
 	</div>
 
-	{#if datePickerOpen}
+	{#if demoMode === "grouped" && datePickerOpen}
 		{@const range = getDateRange(items)}
 		<DatePicker
 			initialYear={datePickerAnchor.year}

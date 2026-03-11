@@ -3,6 +3,6 @@ export function countNodesInScrollContainer(container: HTMLElement | null): numb
 		return 0;
 	}
 
-	// Count all descendant element nodes inside the scroll container.
-	return container.querySelectorAll(".message-item").length;
+	// Count rendered row nodes in both benchmark modes.
+	return container.querySelectorAll(".message-item, .item").length;
 }
